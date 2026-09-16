@@ -1,0 +1,7 @@
+----------------------------------------------------------------------
+--  EUI_VTools — English localization
+--  English is the identity locale: keys ARE the display text.
+--  This file exists for documentation completeness; no translation needed.
+--  EllesmereUI's engine returns nil catalog for enUS, so L["key"] == "key".
+----------------------------------------------------------------------
+-- No translations needed; English keys pass through unchanged.

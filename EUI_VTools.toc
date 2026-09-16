@@ -1,0 +1,14 @@
+## Interface: 120000, 120001, 120005, 120007, 120100
+## Title: |cff4accffEUI_VTools|r
+## Notes: Velino工具箱。
+## Author: Velino
+## Version: 0.1.0
+## IconTexture: Interface\AddOns\EUI_VTools\media\evt_logo.tga
+## SavedVariables: EUI_VToolsAccountDB
+## SavedVariablesPerCharacter: EUI_VToolsCharDB
+## Dependencies: EllesmereUI
+## OptionalDependencies: EllesmereUIUnitFrames
+
+Init.lua
+Locale\Locale.xml
+Core\Core.xml
