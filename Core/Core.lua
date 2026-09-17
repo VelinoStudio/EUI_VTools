@@ -203,19 +203,25 @@ local function SetPlusButtonActive(pageKey)
         local isPlus = folder and folder:sub(1, #PLUS_FOLDER_PREFIX) == PLUS_FOLDER_PREFIX
         if isPlus then
             local isTarget = folder == PLUS_FOLDER_PREFIX .. pageKey
+            -- 选中态：indicator / glow / glowTop / glowBot 全部同步
             if btn._indicator then
                 if isTarget then btn._indicator:Show() else btn._indicator:Hide() end
             end
             if btn._glow then
                 if isTarget then btn._glow:Show() else btn._glow:Hide() end
             end
+            if btn._glowTop then
+                if isTarget then btn._glowTop:Show() else btn._glowTop:Hide() end
+            end
+            if btn._glowBot then
+                if isTarget then btn._glowBot:Show() else btn._glowBot:Hide() end
+            end
             if btn._label then
                 btn._label:SetAlpha(isTarget and 1 or 0.75)
             end
         else
-            if btn._indicator then btn._indicator:Hide() end
-            if btn._glow then btn._glow:Hide() end
-            if btn._label then btn._label:SetAlpha(0.75) end
+            -- 非 Plus 按钮：交回 EUI 自身 UpdateSidebarHighlight 处理
+            -- 我们只负责熄灭 Plus 按钮的选中态，不动 EUI 原生按钮
         end
     end
 end
@@ -253,27 +259,49 @@ end
 local function DecorateChildRow(btn)
     local EG = (EUI and EUI.ELLESMERE_GREEN) or { r = UI.ACCENT_R, g = UI.ACCENT_G, b = UI.ACCENT_B }
 
-    -- 选中态左侧竖条
-    local indicator = UI.SolidTex(btn, "ARTWORK", EG.r, EG.g, EG.b, 1)
+    -- 选中态左侧竖条（与 EUI 一致：BORDER 层）
+    local indicator = btn:CreateTexture(nil, "BORDER")
+    indicator:SetColorTexture(EG.r, EG.g, EG.b, 1)
     indicator:SetWidth(3)
     indicator:SetPoint("TOPLEFT", btn, "TOPLEFT", -1, 0)
     indicator:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", -1, 0)
     indicator:Hide()
     btn._indicator = indicator
 
-    -- 选中态整行辉光
-    local glow = UI.SolidTex(btn, "ARTWORK", EG.r, EG.g, EG.b, 0.12)
-    glow:SetAllPoints()
+    -- 选中态整行辉光（水平渐变，与 EUI MakeNavGradient 一致）
+    local glow = btn:CreateTexture(nil, "BACKGROUND")
+    glow:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
+    glow:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
+    glow:SetColorTexture(EG.r, EG.g, EG.b, 1)
+    glow:SetGradient("HORIZONTAL", CreateColor(EG.r, EG.g, EG.b, 0.15), CreateColor(EG.r, EG.g, EG.b, 0))
     glow:Hide()
     btn._glow = glow
 
+    -- 选中态顶/底边缘线（与 EUI MakeNavEdgeLine 一致：1px 灰白渐变）
+    local function makeEdge(edge)
+        local g = btn:CreateTexture(nil, "BORDER")
+        g:SetHeight(1)
+        g:SetPoint(edge .. "LEFT", btn, edge .. "LEFT", 0, 0)
+        g:SetPoint(edge .. "RIGHT", btn, edge .. "RIGHT", 0, 0)
+        g:SetColorTexture(0.7, 0.7, 0.7, 1)
+        g:SetGradient("HORIZONTAL", CreateColor(0.7, 0.7, 0.7, 0.5), CreateColor(0.7, 0.7, 0.7, 0))
+        g:Hide()
+        return g
+    end
+    btn._glowTop = makeEdge("TOP")
+    btn._glowBot = makeEdge("BOTTOM")
+
     -- hover 辉光
     local hR, hG, hB = 0.85, 0.95, 0.90
-    btn._hoverGlow = UI.SolidTex(btn, "ARTWORK", hR, hG, hB, 0.03)
-    btn._hoverGlow:SetAllPoints()
+    btn._hoverGlow = btn:CreateTexture(nil, "BACKGROUND")
+    btn._hoverGlow:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
+    btn._hoverGlow:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
+    btn._hoverGlow:SetColorTexture(hR, hG, hB, 1)
+    btn._hoverGlow:SetGradient("HORIZONTAL", CreateColor(hR, hG, hB, 0.03), CreateColor(hR, hG, hB, 0))
     btn._hoverGlow:Hide()
 
-    local hoverInd = UI.SolidTex(btn, "ARTWORK", hR, hG, hB, 0.25)
+    local hoverInd = btn:CreateTexture(nil, "BORDER")
+    hoverInd:SetColorTexture(hR, hG, hB, 0.25)
     hoverInd:SetWidth(3)
     hoverInd:SetPoint("TOPLEFT", btn, "TOPLEFT", -1, 0)
     hoverInd:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", -1, 0)
@@ -288,7 +316,8 @@ local function DecorateChildRow(btn)
     btn._dlIcon = dlIcon
 
     -- 整体 hover 高亮蒙版
-    local hover = UI.SolidTex(btn, "HIGHLIGHT", 1, 1, 1, 0)
+    local hover = btn:CreateTexture(nil, "HIGHLIGHT")
+    hover:SetColorTexture(1, 1, 1, 0)
     hover:SetAllPoints()
 
     btn:SetScript("OnEnter", function(self)
