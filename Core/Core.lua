@@ -22,12 +22,13 @@ local PLUS_FOLDER_PREFIX = "EUI_VTools_"
 ----------------------------------------------------------------------
 local pageDefs = {}
 
-local function RegisterPage(key, name, build, module)
-    tinsert(pageDefs, { key = key, name = name, build = build, module = module })
+local function RegisterPage(key, nameKey, build, module)
+    -- 保存英文 key，UI 渲染时才调用 L() 翻译（避免 file-scope 时 activeCatalog 未就绪）
+    tinsert(pageDefs, { key = key, nameKey = nameKey, build = build, module = module })
 end
 
 -- 框架阶段只注册一个占位页，后续功能逐步添加时在此处新增 RegisterPage 调用
-RegisterPage("general", L["General"], evt.Pages.BuildGeneralPage, nil)
+RegisterPage("general", "General", evt.Pages.BuildGeneralPage, nil)
 
 ----------------------------------------------------------------------
 --  内容区接管
@@ -241,7 +242,7 @@ local function CreatePlusGroupHeader(parent)
 
     local label = UI.MakeFont(row, 15, r, g, b, 1)
     label:SetPoint("LEFT", row, "LEFT", (EUI.NAV_LEFT or 20), 0)
-    label:SetText(L["Velino Toolbox"])
+    label:SetText(L("Velino Toolbox"))
 
     row._isGroup = true
     row._groupKey = GROUP_KEY
@@ -316,7 +317,7 @@ local function CreatePlusChildRow(parent, pageDef, indentX)
 
     local label = UI.MakeFont(btn, 14, 1, 1, 1, 0.75)
     label:SetPoint("LEFT", btn, "LEFT", indentX, 0)
-    label:SetText(pageDef.name)
+    label:SetText(L(pageDef.nameKey))
     btn._label = label
     btn._pageKey = pageDef.key
     btn._folder = PLUS_FOLDER_PREFIX .. pageDef.key
@@ -376,15 +377,16 @@ local function InjectPlusSidebar()
     local indentX = (EUI.NAV_LEFT or 18) + 16
 
     -- 注册 Plus 分组到 ADDON_GROUPS
-    local group = { key = GROUP_KEY, label = L["Velino Toolbox"], members = {} }
+    local group = { key = GROUP_KEY, label = L("Velino Toolbox"), members = {} }
     for _, def in ipairs(pageDefs) do
         local folder = PLUS_FOLDER_PREFIX .. def.key
         tinsert(group.members, folder)
         if EUI._addonInfoByFolder then
+            local name = L(def.nameKey)
             EUI._addonInfoByFolder[folder] = {
                 folder = folder,
-                display = def.name,
-                search_name = L["Velino Toolbox"] .. " " .. def.name,
+                display = name,
+                search_name = L("Velino Toolbox") .. " " .. name,
                 alwaysLoaded = true,
             }
         end
@@ -505,7 +507,7 @@ local function StartInjectLoop()
                 local folder = PLUS_FOLDER_PREFIX .. def.key
                 EUI._modules = EUI._modules or {}
                 if not EUI._modules[folder] then
-                    EUI._modules[folder] = { title = def.name }
+                    EUI._modules[folder] = { title = L(def.nameKey) }
                 end
             end
 

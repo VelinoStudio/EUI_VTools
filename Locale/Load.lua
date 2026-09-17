@@ -9,7 +9,7 @@
 --  用法（各模块文件）：
 --      local _, evt = ...
 --      local L = evt.L          -- 即 EllesmereUI.L
---      label = L["General"]    -- zhCN→通用 / enUS→General
+--      label = L("General")    -- zhCN→通用 / enUS→General
 --
 --  各语言文件调用 EllesmereUI.RegisterLocale(code) 获取翻译表并填充。
 --  因为 EllesmereUI 引擎在 ADDON_LOADED 时 Activate()，而本插件在

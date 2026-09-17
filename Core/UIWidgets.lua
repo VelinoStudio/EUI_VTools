@@ -80,7 +80,7 @@ function evt.UI.SectionHeader(parent, text, y)
     local padX = evt.UI.PAGE_PAD_X
     local fs = evt.UI.MakeFont(parent, 16, 1, 1, 1, 0.41)
     fs:SetPoint("TOPLEFT", parent, "TOPLEFT", padX, y)
-    fs:SetText(L[text] or text)
+    fs:SetText(L(text))
 
     local line = evt.UI.SolidTex(parent, "ARTWORK", 1, 1, 1, 0.06)
     line:SetHeight(1)
