@@ -29,6 +29,7 @@ end
 
 -- 框架阶段只注册一个占位页，后续功能逐步添加时在此处新增 RegisterPage 调用
 RegisterPage("general", "General", evt.Pages.BuildGeneralPage, nil)
+RegisterPage("ui", "UI", evt.Pages.BuildUIScalePage, nil)
 
 ----------------------------------------------------------------------
 --  内容区接管

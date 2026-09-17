@@ -1,5 +1,7 @@
 <Ui xmlns="http://www.blizzard.com/wow/ui/">
   <Script file="UIWidgets.lua"/>
+  <Script file="UIScale\UIScale.lua"/>
   <Script file="Pages\General.lua"/>
+  <Script file="Pages\UIScale.lua"/>
   <Script file="Core.lua"/>
 </Ui>
