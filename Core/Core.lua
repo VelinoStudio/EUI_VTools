@@ -144,6 +144,11 @@ local function ShowPlusPage(pageKey)
     plusWrapperVisible = true
     activePlusPageKey = pageKey
 
+    -- 先隐藏所有已缓存的 Plus 页（防止内容叠加）
+    for k, pg in pairs(wrapper._pages) do
+        if k ~= pageKey then pg:Hide() end
+    end
+
     -- 构建或显示目标页
     local page = wrapper._pages[pageKey]
     if not page then
@@ -221,8 +226,13 @@ local function SetPlusButtonActive(pageKey)
                 btn._label:SetAlpha(isTarget and 1 or 0.75)
             end
         else
-            -- 非 Plus 按钮：交回 EUI 自身 UpdateSidebarHighlight 处理
-            -- 我们只负责熄灭 Plus 按钮的选中态，不动 EUI 原生按钮
+            -- 关键：选 Plus 页面时必须熄灭所有 EUI 原生按钮的高亮
+            -- 因为我们 hook SelectModule 后 return 了，EUI 自己的
+            -- UpdateSidebarHighlight(folderName) 不会被调用
+            if btn._indicator then btn._indicator:Hide() end
+            if btn._glow then btn._glow:Hide() end
+            if btn._glowTop then btn._glowTop:Hide() end
+            if btn._glowBot then btn._glowBot:Hide() end
         end
     end
 end
