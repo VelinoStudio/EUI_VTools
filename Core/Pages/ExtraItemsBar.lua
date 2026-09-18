@@ -554,6 +554,29 @@ buildBarSection = function(section)
     })
     y = y - rowH
 
+    -- 边框样式 + 边框大小（与 EUI 原生动作条边框设置一致）
+    row, rowH = W:DualRow(section, y, {
+        type = "dropdown",
+        text = L("Border Style"),
+        values = { none = "None", solid = "Solid" },
+        order = { "none", "solid" },
+        getValue = function() return barDB.borderStyle or "solid" end,
+        setValue = function(v)
+            barDB.borderStyle = v
+            EIB.UpdateBar(currentBar)
+        end,
+    }, {
+        type = "slider",
+        text = L("Border Size"),
+        min = 1, max = 5, step = 1,
+        getValue = function() return barDB.borderSize or 1 end,
+        setValue = function(v)
+            barDB.borderSize = math.floor(v)
+            EIB.UpdateBar(currentBar)
+        end,
+    })
+    y = y - rowH
+
     -- 显示
     _, h = W:SectionHeader(section, "Display", y)
     y = y - h
@@ -648,10 +671,40 @@ buildBarSection = function(section)
     })
     y = y - rowH - 4
 
-    -- 可见性（高级）
+    -- 可见性
     _, h = W:SectionHeader(section, "Visibility", y)
     y = y - h
 
+    -- 预设下拉（与 EUI 原生动作条一致的可见性选项）
+    local visPresets = {
+        ["show"] = "Always",
+        ["hide"] = "Hide",
+        ["[combat]show;hide"] = "In Combat",
+        ["[combat]hide;show"] = "Out of Combat",
+        ["[petbattle]hide;show"] = "Hide in Pet Battle",
+        ["[stealth]show;hide"] = "In Stealth",
+    }
+    local function GetVisPreset()
+        for macro in pairs(visPresets) do
+            if barDB.visibility == macro then return macro end
+        end
+        return barDB.visibility -- 不匹配则保留原值（高级模式）
+    end
+    row, rowH = W:DualRow(section, y, {
+        type = "dropdown",
+        text = L("Visibility"),
+        values = visPresets,
+        order = { "show", "hide", "[combat]show;hide", "[combat]hide;show",
+                  "[petbattle]hide;show", "[stealth]show;hide" },
+        getValue = GetVisPreset,
+        setValue = function(v)
+            barDB.visibility = v
+            EIB.UpdateBar(currentBar)
+        end,
+    }, nil)
+    y = y - rowH
+
+    -- 高级：自定义可见性条件（与 EUI 原生一致的原始宏条件输入）
     row, rowH = MakeInputRow(section, y, "Visibility Macro",
         function() return barDB.visibility end,
         function(text)
@@ -718,6 +771,9 @@ function evt.Pages.BuildExtraItemsPage(parent)
     _, h = W:SectionHeader(parent, "Bar", y)
     y = y - h
 
+    -- 前置声明：barSection 在下方才创建，但 dropdown 的 setValue 闭包需要引用它
+    local barSection
+
     row, rowH = W:WideDropdown(parent, L("Bar"), y, {
         bar1 = "Bar 1",
         bar2 = "Bar 2",
@@ -727,7 +783,7 @@ function evt.Pages.BuildExtraItemsPage(parent)
     }, function() return "bar" .. currentBar end,
     function(v)
         currentBar = tonumber(strmatch(v, "%d+")) or 1
-        RebuildBarSection(barSection)
+        if barSection then RebuildBarSection(barSection) end
     end, { "bar1", "bar2", "bar3", "bar4", "bar5" }, 440)
     y = y - rowH - 4
 
@@ -782,7 +838,7 @@ function evt.Pages.BuildExtraItemsPage(parent)
 
     -- 当前条配置区（条切换时整体重建）
     local yTop = y - 8
-    local barSection = CreateFrame("Frame", nil, parent)
+    barSection = CreateFrame("Frame", nil, parent)
     -- 关键：显式设置宽度。仅靠 TOPLEFT+TOPRIGHT 锚点时，GetWidth() 在布局完成前返回 0，
     -- 会导致 DualRow/MakeInputRow 算出负宽度，所有控件塌缩到左侧。
     barSection:SetWidth(parent:GetWidth())

@@ -73,6 +73,7 @@ local function DefaultBar(id)
         buttonWidth = 35, buttonHeight = 30,
         spacing = 3, backdropSpacing = 3,
         backdrop = true, anchor = "TOPLEFT",
+        borderStyle = "solid", borderSize = 1,
         mouseOver = false, fadeTime = 0.3,
         alphaMin = 0, alphaMax = 1,
         tooltip = true,
@@ -446,7 +447,8 @@ local function ApplyAnchorPosition(id)
     if pos and pos.point then
         anchor:SetPoint(pos.point, UIParent, pos.relPoint or pos.point, pos.x or 0, pos.y or 0)
     else
-        anchor:SetPoint("CENTER", UIParent, "CENTER", -260 + (id - 1) * 120, -260)
+        -- 默认居屏幕中央偏下，便于首次发现
+        anchor:SetPoint("CENTER", UIParent, "CENTER", (id - 3) * 130, -180)
     end
 end
 
@@ -473,11 +475,21 @@ local function CreateBar(id)
     bar:SetSize(200, 40)
     bar:SetFrameStrata("LOW")
 
-    -- 可开关的条背景（深色底 + 边框，与按钮风格一致）
+    -- 可开关的条背景（深色底）
     local barBg = UI.SolidTex(bar, "BACKGROUND", 0, 0, 0, 0.35)
     barBg:SetAllPoints()
-    UI.ApplyBorder(bar, 1, 1, 1, 0.2)
     bar.barBg = barBg
+
+    -- 边框：4 条纹理，厚度由 borderSize 控制，显隐由 borderStyle 控制
+    local function makeEdge(...)
+        local t = bar:CreateTexture(nil, "OVERLAY")
+        t:SetColorTexture(1, 1, 1, 0.2)
+        return t
+    end
+    bar.borderTop = makeEdge()
+    bar.borderBottom = makeEdge()
+    bar.borderLeft = makeEdge()
+    bar.borderRight = makeEdge()
 
     bar.buttons = {}
     for i = 1, MAX_BUTTONS do
@@ -532,6 +544,35 @@ end
 ----------------------------------------------------------------------
 --  刷新一条
 ----------------------------------------------------------------------
+local function UpdateBarBorder(bar, barDB)
+    if not bar then return end
+    local style = barDB.borderStyle or "solid"
+    local size = barDB.borderSize or 1
+    if style == "none" or size <= 0 then
+        bar.borderTop:Hide()
+        bar.borderBottom:Hide()
+        bar.borderLeft:Hide()
+        bar.borderRight:Hide()
+        return
+    end
+    bar.borderTop:Show()
+    bar.borderBottom:Show()
+    bar.borderLeft:Show()
+    bar.borderRight:Show()
+    bar.borderTop:SetHeight(size)
+    bar.borderTop:SetPoint("TOPLEFT", bar, "TOPLEFT", 0, 0)
+    bar.borderTop:SetPoint("TOPRIGHT", bar, "TOPRIGHT", 0, 0)
+    bar.borderBottom:SetHeight(size)
+    bar.borderBottom:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", 0, 0)
+    bar.borderBottom:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 0, 0)
+    bar.borderLeft:SetWidth(size)
+    bar.borderLeft:SetPoint("TOPLEFT", bar, "TOPLEFT", 0, 0)
+    bar.borderLeft:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", 0, 0)
+    bar.borderRight:SetWidth(size)
+    bar.borderRight:SetPoint("TOPRIGHT", bar, "TOPRIGHT", 0, 0)
+    bar.borderRight:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 0, 0)
+end
+
 local function UpdateBar(id)
     local db = DB()
     local barDB = db and db["bar" .. id]
@@ -697,10 +738,11 @@ local function UpdateBar(id)
             bar.registeredVisibility = barDB.visibility
         end
 
-        -- 背景 / alpha
+        -- 背景 / alpha / 边框
         if bar.barBg then
             if barDB.backdrop then bar.barBg:Show() else bar.barBg:Hide() end
         end
+        UpdateBarBorder(bar, barDB)
         bar:SetAlpha(barDB.mouseOver and (barDB.alphaMin or 0) or (barDB.alphaMax or 1))
         bar:Show()
     else
@@ -710,6 +752,7 @@ local function UpdateBar(id)
             bar.register = false
         end
         if bar.barBg then bar.barBg:Show() end
+        UpdateBarBorder(bar, barDB)
         bar:SetAlpha(1)
         bar:Show()
     end
@@ -1074,12 +1117,20 @@ boot:RegisterEvent("PLAYER_LOGIN")
 boot:SetScript("OnEvent", function()
     boot:UnregisterAllEvents()
 
+    print("|cff4accff[EVT]|r ExtraItemsBar boot start, EUI=", tostring(EUI ~= nil),
+          "MakeUnlockElement=", tostring(EUI and EUI.MakeUnlockElement ~= nil),
+          "RegisterUnlockElements=", tostring(EUI and EUI.RegisterUnlockElements ~= nil))
+
     -- 始终创建 5 条（即使禁用），解锁模式与 getFrame 依赖 anchor 存在
     local created = 0
     for id = 1, 5 do
         if not bars[id] then
-            CreateBar(id)
-            if bars[id] then created = created + 1 end
+            local ok, err = pcall(CreateBar, id)
+            if ok and bars[id] then
+                created = created + 1
+            elseif not ok then
+                print("|cffff6b6b[EVT]|r CreateBar("..id..") failed:", err)
+            end
         end
     end
 
@@ -1097,8 +1148,9 @@ boot:SetScript("OnEvent", function()
     end
 
     local db = DB()
-    print(string.format("|cff4accff[EVT]|r ExtraItemsBar boot: %d/5 bars created, unlock=%s, enable=%s",
-        created, tostring(EIB._unlockRegistered), tostring(db and db.enable)))
+    print(string.format("|cff4accff[EVT]|r ExtraItemsBar boot: %d/5 bars, unlock=%s, enable=%s, bar1.enable=%s",
+        created, tostring(EIB._unlockRegistered), tostring(db and db.enable),
+        tostring(db and db.bar1 and db.bar1.enable)))
 
     if db and db.enable then
         Initialize()
