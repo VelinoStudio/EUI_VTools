@@ -22,14 +22,14 @@ local PLUS_FOLDER_PREFIX = "EUI_VTools_"
 ----------------------------------------------------------------------
 local pageDefs = {}
 
-local function RegisterPage(key, nameKey, build, module)
+local function RegisterPage(key, nameKey, descKey, build, module)
     -- 保存英文 key，UI 渲染时才调用 L() 翻译（避免 file-scope 时 activeCatalog 未就绪）
-    tinsert(pageDefs, { key = key, nameKey = nameKey, build = build, module = module })
+    tinsert(pageDefs, { key = key, nameKey = nameKey, descKey = descKey, build = build, module = module })
 end
 
 -- 框架阶段只注册一个占位页，后续功能逐步添加时在此处新增 RegisterPage 调用
-RegisterPage("general", "General", evt.Pages.BuildGeneralPage, nil)
-RegisterPage("ui", "UI", evt.Pages.BuildUIScalePage, nil)
+RegisterPage("general", "General", "General_Desc", evt.Pages.BuildGeneralPage, nil)
+RegisterPage("ui", "UI", "UI_Desc", evt.Pages.BuildUIScalePage, nil)
 
 ----------------------------------------------------------------------
 --  内容区接管
@@ -37,6 +37,9 @@ RegisterPage("ui", "UI", evt.Pages.BuildUIScalePage, nil)
 -- Plus 内容包裹帧（由 EnsurePlusWrapper 创建并赋值）
 local plusContentWrapper
 local activePlusPageKey
+-- lastPlusPageKey：跨 close/reopen 保持最后选中的 Plus 页面
+-- （与 activePlusPageKey 不同，后者是运行时状态，Hide 时会清）
+local lastPlusPageKey
 -- Plus 内容可见状态
 local plusWrapperVisible = false
 
@@ -143,6 +146,7 @@ local function ShowPlusPage(pageKey)
     wrapper:Show()
     plusWrapperVisible = true
     activePlusPageKey = pageKey
+    lastPlusPageKey = pageKey   -- 持久化：关闭重开后仍能恢复
 
     -- 先隐藏所有已缓存的 Plus 页（防止内容叠加）
     for k, pg in pairs(wrapper._pages) do
@@ -197,6 +201,7 @@ local function HidePlusForNativeSwitch()
     if plusContentWrapper then plusContentWrapper:Hide() end
     plusWrapperVisible = false
     activePlusPageKey = nil
+    lastPlusPageKey = nil   -- 切到原生模块：让下次打开恢复原生模块而非 Plus
     RestoreNativeEUIContent()
 end
 
@@ -232,7 +237,7 @@ local function UpdatePlusHeader(pageDef)
         hf._title:SetText(L(pageDef.nameKey))
     end
     if hf and hf._desc then
-        hf._desc:SetText("")
+        hf._desc:SetText(pageDef.descKey and L(pageDef.descKey) or "")
     end
     -- 更新底部 reset 按钮（Plus 页面没有 onReset，隐藏即可）
     if EUI._UpdateResetButtonVisible then
@@ -558,21 +563,35 @@ local function HookEUINavigation()
         EUI._vtoolsHookedPage = true
     end
 
-    -- 监听主窗口显示/隐藏
-    if EUI._mainFrame and not EUI._mainFrame._vtoolsOnShow then
-        EUI._mainFrame:HookScript("OnShow", function()
-            C_Timer.After(0, function()
-                if not (EUI._mainFrame and EUI._mainFrame:IsShown()) then return end
-                if activePlusPageKey then
-                    ShowPlusPage(activePlusPageKey)
-                    SetPlusButtonActive(activePlusPageKey)
-                end
-            end)
+    -- 监听主窗口 Show/Toggle（EUI:Show() 和 EUI:Toggle()）
+    -- 关键：不用 mainFrame:HookScript("OnShow")，因为 _mainFrame 在注入时
+    -- 可能还不存在（懒创建），hook 永远不注册。EUI:Show()/Toggle() 是
+    -- table 方法，注入时一定存在。
+    local function _onPanelShown()
+        C_Timer.After(0, function()
+            if not EUI:IsShown() then return end
+            -- 优先用持久化的 lastPlusPageKey（跨 close/reopen）
+            -- HidePlusContent 清 activePlusPageKey 但保留 lastPlusPageKey
+            local restoreKey = lastPlusPageKey
+            if not restoreKey then return end
+            -- 如果当前 activeModule 已经是这个 Plus 页面，不用再恢复
+            local curMod = (EUI.GetActiveModule and EUI:GetActiveModule()) or nil
+            if curMod == PLUS_FOLDER_PREFIX .. restoreKey then return end
+            -- 用 EUI:SelectModule 触发完整流程（header/highlight/BuildTabs）
+            EUI:SelectModule(PLUS_FOLDER_PREFIX .. restoreKey)
         end)
-        EUI._mainFrame:HookScript("OnHide", function()
-            HidePlusContent()
+    end
+
+    if EUI.Show and not EUI._vtoolsHookedShow then
+        hooksecurefunc(EUI, "Show", _onPanelShown)
+        EUI._vtoolsHookedShow = true
+    end
+    if EUI.Toggle and not EUI._vtoolsHookedToggle then
+        hooksecurefunc(EUI, "Toggle", function()
+            -- Toggle 可能 Hide 或 Show，只在 Show 时恢复
+            if EUI:IsShown() then _onPanelShown() end
         end)
-        EUI._mainFrame._vtoolsOnShow = true
+        EUI._vtoolsHookedToggle = true
     end
 
     -- Hook RefreshPage：覆盖绕过 SelectModule/SelectPage 的原生页面重建路径

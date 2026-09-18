@@ -15,6 +15,10 @@ L["Velino Toolbox"]      = "Velino工具箱"
 L["General"]             = "通用"
 L["UI"]                  = "界面"
 
+-- 页面描述（header 下方小字）
+L["General_Desc"]        = "Velino 工具箱：框架与元信息。"
+L["UI_Desc"]             = "调整游戏内各类窗体的缩放比例。"
+
 -- 通用设置页文案
 L["Welcome to EUI_VTools"]        = "欢迎使用 Velino 工具箱"
 L["Framework ready"]              = "框架已就绪，功能将逐步添加。"
