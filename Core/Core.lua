@@ -30,6 +30,7 @@ end
 -- 框架阶段只注册一个占位页，后续功能逐步添加时在此处新增 RegisterPage 调用
 RegisterPage("general", "General", "General_Desc", evt.Pages.BuildGeneralPage, nil)
 RegisterPage("ui", "UI", "UI_Desc", evt.Pages.BuildUIScalePage, nil)
+RegisterPage("items", "Extra Items Bar", "ExtraItemsBar_Desc", evt.Pages.BuildExtraItemsPage, nil)
 
 ----------------------------------------------------------------------
 --  内容区接管
@@ -173,6 +174,31 @@ local function HidePlusContent()
     plusWrapperVisible = false
     activePlusPageKey = nil
 end
+
+-- 判断 EUI 原生内容是否可见（用于 Plus 层退出后判断是否需要恢复原生页）
+local function NativeContentVisible()
+    local sc = GetScrollChild()
+    if sc then
+        for _, child in ipairs({ sc:GetChildren() }) do
+            if child ~= plusContentWrapper and child:IsShown() then
+                return true
+            end
+        end
+    end
+    if EUI and EUI._pageCache then
+        for _, entry in pairs(EUI._pageCache) do
+            if entry and entry.wrapper and entry.wrapper:IsShown() then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- 深链保护标记：Plus 模块刚被 SelectModule 选中时置位，
+-- 由随后（齿轮深链）紧跟的 SelectPage 调用消费并跳过，避免
+-- 原版 SelectPage 用 nil 页面把刚显示的 Plus 层拆掉。
+local plusJustShown = nil
 
 ----------------------------------------------------------------------
 --  查找 EUI 的 headerFrame（file-local 变量，不在 EUI 全局上）
@@ -497,9 +523,11 @@ local function HookEUINavigation()
                 ShowPlusPage(pageKey)
                 SetPlusButtonActive(pageKey)
                 if pageDef then UpdatePlusHeader(pageDef) end
+                plusJustShown = pageKey
             else
                 -- 切到原生模块：原版 SelectModule 已成功执行（更新了 header、
                 -- 原生按钮高亮、BuildTabs），我们只需隐藏 Plus 层 + 熄灭 Plus 按钮高亮
+                plusJustShown = nil
                 if plusContentWrapper then plusContentWrapper:Hide() end
                 plusWrapperVisible = false
                 activePlusPageKey = nil
@@ -511,6 +539,11 @@ local function HookEUINavigation()
                         if b._label then b._label:SetAlpha(0.75) end
                     end
                 end
+                -- 原版可能因「同模块重复选中」早 return（未重建原生内容）。
+                -- 若 Plus 层刚隐藏且原生内容不可见，主动恢复原生页面。
+                if EUI.RefreshPage and not NativeContentVisible() then
+                    EUI:RefreshPage(true)
+                end
             end
         end)
         EUI._vtoolsHookedSelect = true
@@ -519,11 +552,29 @@ local function HookEUINavigation()
     -- Hook SelectPage：Plus 层显示时强制熄灭，防止与原生内容重叠
     if EUI.SelectPage and not EUI._vtoolsHookedPage then
         local origPage = EUI.SelectPage
+        local inPageRestore = false
         EUI.SelectPage = function(self, pageName)
+            -- 齿轮深链：SelectModule(Plus) 后紧跟 SelectPage(nil)。
+            -- Plus 模块不在原版 modules 表里，activeModule 仍是旧原生模块，
+            -- 原版会用 nil 页面拆掉刚显示的 Plus 层甚至破坏原生页状态。
+            -- 仅当 Plus 页刚显示且 pageName 为 nil 时跳过（内部切换传的是具体页名）。
+            if plusJustShown and pageName == nil then
+                plusJustShown = nil
+                return
+            end
+            plusJustShown = nil
             if plusContentWrapper then plusContentWrapper:Hide() end
             plusWrapperVisible = false
             activePlusPageKey = nil
-            return origPage(self, pageName)
+            local result = origPage(self, pageName)
+            -- 原版可能因「同页面重复选中」早 return（未重建原生内容）。
+            -- 若 Plus 层刚隐藏且原生内容不可见，主动恢复原生页面（防重入）。
+            if not inPageRestore and EUI.RefreshPage and not NativeContentVisible() then
+                inPageRestore = true
+                EUI:RefreshPage(true)
+                inPageRestore = false
+            end
+            return result
         end
         EUI._vtoolsHookedPage = true
     end
@@ -576,6 +627,18 @@ local function HookEUINavigation()
             activePlusPageKey = nil
         end)
         EUI._vtoolsHookedRefresh = true
+    end
+
+    -- 齿轮"元素选项"深链：解锁元素 → evt 设置页
+    -- （与 ExtraItemBar.lua 的 BUTTON_PREFIX 对应）
+    local mapTarget = EUI._elemMapPre or EUI._ELEMENT_SETTINGS_MAP
+    if mapTarget then
+        for i = 1, 5 do
+            local key = "EVT_ExtraItemsBar" .. i
+            if mapTarget[key] == nil then
+                mapTarget[key] = { module = "EUI_VTools_items", page = nil }
+            end
+        end
     end
 end
 
