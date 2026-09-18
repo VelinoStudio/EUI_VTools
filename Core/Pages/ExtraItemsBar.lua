@@ -417,7 +417,7 @@ local function RebuildBarSection(section)
         child:Hide()
         child:SetParent(nil)
     end
-    section:SetHeight(buildBarSection(section))
+    section:SetHeight(math.abs(buildBarSection(section)))
 end
 
 buildBarSection = function(section)
@@ -774,8 +774,9 @@ function evt.Pages.BuildExtraItemsPage(parent)
     barSection:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, yTop)
     barSection:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, yTop)
     local sectionH = buildBarSection(barSection)
-    barSection:SetHeight(sectionH)
-    y = yTop - sectionH
+    -- buildBarSection 返回负 y（WoW 向下为负），高度取绝对值
+    barSection:SetHeight(math.abs(sectionH))
+    y = yTop + sectionH   -- sectionH 为负，等价于 yTop - |sectionH|
 
     return y
 end

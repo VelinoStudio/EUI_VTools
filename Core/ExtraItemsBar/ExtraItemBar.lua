@@ -883,6 +883,7 @@ end
 --  EUI 解锁模式注册（位置管理）
 ----------------------------------------------------------------------
 local function RegisterUnlock()
+    if EIB._unlockRegistered then return end
     if not EUI or not EUI.RegisterUnlockElements then return end
     local MK = EUI.MakeUnlockElement
     if not MK then return end
@@ -968,6 +969,7 @@ local function RegisterUnlock()
     end
 
     EUI:RegisterUnlockElements(elements)
+    EIB._unlockRegistered = true
 end
 
 ----------------------------------------------------------------------
@@ -981,12 +983,17 @@ local function RegisterUnlockListener()
             for i = 1, 5 do
                 local barDB = db and db["bar" .. i]
                 if db and db.enable and barDB and barDB.enable and bars[i] then
-                    if bars[i].register then
-                        UnregisterStateDriver(bars[i], "visibility")
-                        bars[i].register = false
+                    local bar = bars[i]
+                    if bar.register then
+                        UnregisterStateDriver(bar, "visibility")
+                        bar.register = false
                     end
-                    bars[i]:Show()
-                    bars[i]:SetAlpha(1)
+                    -- 解锁模式：强制显示背景 + 全 alpha，即使条内容为空也能看到并拖动
+                    if bar.barBg then bar.barBg:Show() end
+                    bar:Show()
+                    bar:SetAlpha(1)
+                    -- 空条补一个最小尺寸，避免 0 尺寸无法选中
+                    if bar:GetWidth() < 20 then bar:SetSize(80, 40) end
                 end
             end
         else
@@ -1002,12 +1009,6 @@ local function Initialize()
     if EIB.initialized then return end
     EIB.initialized = true
 
-    -- 按钮序号标记（绑定命令定位用）
-    for id = 1, 5 do
-        CreateBar(id)
-        if not bars[id] then return end
-    end
-
     UpdateQuestItemList()
     UpdateEquipmentList()
     UpdateState(EIB.STATE.IN_DELVE)
@@ -1015,21 +1016,41 @@ local function Initialize()
     UpdateBars()
     UpdateBinding()
     RegisterEvents()
-    RegisterUnlock()
-    RegisterUnlockListener()
 end
 
+----------------------------------------------------------------------
+--  启动：PLAYER_LOGIN 时始终创建条 + 注册解锁元素（保证解锁模式可见），
+--  仅在 enable 时才初始化内容刷新与事件监听。
+----------------------------------------------------------------------
 local boot = CreateFrame("Frame")
 boot:RegisterEvent("PLAYER_LOGIN")
 boot:SetScript("OnEvent", function()
     boot:UnregisterAllEvents()
+
+    -- 始终创建 5 条（即使禁用），解锁模式与 getFrame 依赖 anchor 存在
+    for id = 1, 5 do
+        if not bars[id] then CreateBar(id) end
+    end
+
+    -- 始终注册解锁元素与监听（isHidden 内部判断 enable）
+    RegisterUnlock()
+    RegisterUnlockListener()
+
     local db = DB()
     if db and db.enable then
         Initialize()
     end
 end)
 
--- 设置页开关 enable 时惰性初始化
+-- 设置页开关 enable 时惰性初始化内容
 EIB.EnsureInitialized = function()
+    -- 确保条与解锁元素已就位（PLAYER_LOGIN 可能尚未触发，如极早调用）
+    for id = 1, 5 do
+        if not bars[id] then CreateBar(id) end
+    end
+    if not EIB._unlockRegistered then
+        RegisterUnlock()
+        RegisterUnlockListener()
+    end
     if not EIB.initialized then Initialize() end
 end
