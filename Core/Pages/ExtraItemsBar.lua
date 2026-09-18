@@ -41,8 +41,9 @@ end
 
 ----------------------------------------------------------------------
 --  自绘控件：行式输入框（EUI 行风格：左标签 + 右深色输入框）
+--  tooltip：通过 OnEnter/OnLeave 管理，避免立即常驻显示。
 ----------------------------------------------------------------------
-local function MakeInputRow(parent, y, label, getValue, onSave, boxW)
+local function MakeInputRow(parent, y, label, getValue, onSave, boxW, tooltip)
     local frame = CreateFrame("Frame", nil, parent)
     frame:SetSize(parent:GetWidth() - UI.PAGE_PAD_X * 2, 50)
     frame:SetPoint("TOPLEFT", parent, "TOPLEFT", UI.PAGE_PAD_X, y)
@@ -75,6 +76,16 @@ local function MakeInputRow(parent, y, label, getValue, onSave, boxW)
         self:ClearFocus()
         onSave(self:GetText())
     end)
+
+    -- tooltip：行级悬停显示
+    if tooltip then
+        frame:SetScript("OnEnter", function()
+            UI.ShowTip(frame, L(label), tooltip)
+        end)
+        frame:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+    end
 
     return frame, 50
 end
@@ -380,8 +391,9 @@ end
 
 ----------------------------------------------------------------------
 --  自绘控件：平面操作按钮（弹窗/操作行用，可动态改文本）
+--  tooltip 可选：悬停时显示。
 ----------------------------------------------------------------------
-local function MakeActionButton(parent, width, label, onClick)
+local function MakeActionButton(parent, width, label, onClick, tooltipTitle, tooltipText)
     local btn = CreateFrame("Button", nil, parent)
     btn:SetSize(width, 30)
 
@@ -396,10 +408,14 @@ local function MakeActionButton(parent, width, label, onClick)
     btn:SetScript("OnEnter", function()
         bg:SetColorTexture(1, 1, 1, 0.12)
         lbl:SetAlpha(1)
+        if tooltipTitle then
+            UI.ShowTip(btn, tooltipTitle, tooltipText)
+        end
     end)
     btn:SetScript("OnLeave", function()
         bg:SetColorTexture(1, 1, 1, 0.06)
         lbl:SetAlpha(0.9)
+        GameTooltip:Hide()
     end)
 
     btn._label = lbl
@@ -442,8 +458,7 @@ buildBarSection = function(section)
             barDB.include = text
             EIB.UpdateBar(currentBar)
         end,
-        300)
-    UI.ShowTip(row, L("Advanced Include"), L("Comma separated groups. SLOT:n / SLOT:n-m adds usable equipment slots."))
+        300, L("Comma separated groups. SLOT:n / SLOT:n-m adds usable equipment slots."))
     y = y - rowH - 4
 
     -- 布局
@@ -643,8 +658,7 @@ buildBarSection = function(section)
             barDB.visibility = text
             EIB.UpdateBar(currentBar)
         end,
-        300)
-    UI.ShowTip(row, L("Visibility Macro"), L("Standard macro visibility conditions, e.g. [petbattle]hide;show."))
+        300, L("Standard macro visibility conditions, e.g. [petbattle]hide;show."))
     y = y - rowH
 
     return y
@@ -747,19 +761,17 @@ function evt.Pages.BuildExtraItemsPage(parent)
             EIB.EnsureInitialized()
             EIB.StartBinding(currentBar)
         end
-    end)
-    bindBtn:SetPoint("LEFT", actionRow, "LEFT", 0, 0)
-    UI.ShowTip(bindBtn, L("Bind Keys"),
+    end, L("Bind Keys"),
         L("Hover a bar button and press any key to bind it. ESC while hovering clears its bindings, ESC otherwise exits."))
+    bindBtn:SetPoint("LEFT", actionRow, "LEFT", 0, 0)
 
     local moveBtn = MakeActionButton(actionRow, 240, L("Move in Unlock Mode"), function()
         if EUI and EUI._openUnlockMode then
             if popup then popup:Hide() end
             C_Timer.After(0, EUI._openUnlockMode)
         end
-    end)
+    end, L("Move in Unlock Mode"), L("Open EUI unlock mode to drag the bars."))
     moveBtn:SetPoint("LEFT", bindBtn, "RIGHT", 16, 0)
-    UI.ShowTip(moveBtn, L("Move in Unlock Mode"), L("Open EUI unlock mode to drag the bars."))
 
     -- 绑定模式状态同步按钮文本
     EIB.OnBindingChanged = function(active)
@@ -771,6 +783,9 @@ function evt.Pages.BuildExtraItemsPage(parent)
     -- 当前条配置区（条切换时整体重建）
     local yTop = y - 8
     local barSection = CreateFrame("Frame", nil, parent)
+    -- 关键：显式设置宽度。仅靠 TOPLEFT+TOPRIGHT 锚点时，GetWidth() 在布局完成前返回 0，
+    -- 会导致 DualRow/MakeInputRow 算出负宽度，所有控件塌缩到左侧。
+    barSection:SetWidth(parent:GetWidth())
     barSection:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, yTop)
     barSection:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, yTop)
     local sectionH = buildBarSection(barSection)

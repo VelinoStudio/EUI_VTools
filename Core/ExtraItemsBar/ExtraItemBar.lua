@@ -61,9 +61,51 @@ local BUTTON_PREFIX = "EVT_ExtraItemsBar"
 
 ----------------------------------------------------------------------
 --  数据库访问（经函数读取，兼容 profile 切换）
+--  若 profile 中尚无 extraItemsBar（旧存档未合并新 defaults），手动补建最小结构，
+--  避免 db["bar"..id] 索引 nil 导致整个 boot 脚本崩溃、条无法创建。
 ----------------------------------------------------------------------
+local function DefaultBar(id)
+    return {
+        enable = (id == 1),
+        include = "QUEST,BANNER,EQUIP,PROFMN,HOLIDAY,OPENABLE,DELVE",
+        visibility = "[petbattle]hide;show",
+        numButtons = 12, buttonsPerRow = 12,
+        buttonWidth = 35, buttonHeight = 30,
+        spacing = 3, backdropSpacing = 3,
+        backdrop = true, anchor = "TOPLEFT",
+        mouseOver = false, fadeTime = 0.3,
+        alphaMin = 0, alphaMax = 1,
+        tooltip = true,
+        showCount = true, showBind = true,
+        showQualityTier = true, qualityTierSize = 16,
+        pos = nil,
+    }
+end
+
 local function DB()
-    return evt.db.profile.extraItemsBar
+    local p = evt.db.profile
+    if not p.extraItemsBar then
+        p.extraItemsBar = {
+            enable = true, noQuantumItems = false,
+            customList = {}, blackList = {},
+        }
+        for i = 1, 5 do
+            p.extraItemsBar["bar" .. i] = DefaultBar(i)
+        end
+    end
+    -- 逐条补齐缺失字段（向前兼容旧 profile）
+    for i = 1, 5 do
+        local b = p.extraItemsBar["bar" .. i]
+        if not b then
+            p.extraItemsBar["bar" .. i] = DefaultBar(i)
+        else
+            local d = DefaultBar(i)
+            for k, v in pairs(d) do
+                if b[k] == nil then b[k] = v end
+            end
+        end
+    end
+    return p.extraItemsBar
 end
 EIB.DB = DB
 
@@ -419,6 +461,11 @@ local function CreateBar(id)
     anchor:SetMovable(true)
     anchor.id = id
     ApplyAnchorPosition(id)
+
+    -- anchor 自身加一层极淡背景：空条时也能在屏幕上看到位置（解锁模式与调试用）
+    local anchorBg = UI.SolidTex(anchor, "BACKGROUND", 0, 0, 0, 0.2)
+    anchorBg:SetAllPoints()
+    UI.ApplyBorder(anchor, 1, 1, 1, 0.1)
 
     local bar = CreateFrame("Frame", BUTTON_PREFIX .. id, anchor, "SecureHandlerStateTemplate")
     bar.id = id
@@ -1028,15 +1075,31 @@ boot:SetScript("OnEvent", function()
     boot:UnregisterAllEvents()
 
     -- 始终创建 5 条（即使禁用），解锁模式与 getFrame 依赖 anchor 存在
+    local created = 0
     for id = 1, 5 do
-        if not bars[id] then CreateBar(id) end
+        if not bars[id] then
+            CreateBar(id)
+            if bars[id] then created = created + 1 end
+        end
     end
 
-    -- 始终注册解锁元素与监听（isHidden 内部判断 enable）
+    -- 始终注册解锁元素与监听（isHidden 内部判断 enable）；
+    -- 若 EUI 解锁 API 尚未就绪，延迟 1 秒重试一次。
     RegisterUnlock()
     RegisterUnlockListener()
+    if not EIB._unlockRegistered then
+        C_Timer.After(1, function()
+            if not EIB._unlockRegistered then
+                RegisterUnlock()
+                RegisterUnlockListener()
+            end
+        end)
+    end
 
     local db = DB()
+    print(string.format("|cff4accff[EVT]|r ExtraItemsBar boot: %d/5 bars created, unlock=%s, enable=%s",
+        created, tostring(EIB._unlockRegistered), tostring(db and db.enable)))
+
     if db and db.enable then
         Initialize()
     end
