@@ -53,10 +53,18 @@ local tooltipPreview
 local function BuildTooltipPreview(parent, y)
     local padX = UI.PAGE_PAD_X
     local w = parent:GetWidth() - padX * 2
+    local previewW = 320   -- 预览框固定宽
+    local previewH = 90    -- 预览框固定高
 
-    local frame = CreateFrame("Frame", nil, parent)
-    frame:SetSize(w, 90)
-    frame:SetPoint("TOPLEFT", parent, "TOPLEFT", padX, y)
+    -- 外层 wrapper：固定占位，防止 SetScale 影响布局
+    local wrapper = CreateFrame("Frame", nil, parent)
+    wrapper:SetSize(w, previewH + 8)
+    wrapper:SetPoint("TOPLEFT", parent, "TOPLEFT", padX, y)
+
+    -- 内层预览框：锚定到 wrapper 中心，SetScale 从此缩放
+    local frame = CreateFrame("Frame", nil, wrapper)
+    frame:SetSize(previewW, previewH)
+    frame:SetPoint("CENTER", wrapper, "CENTER", 0, 0)
 
     -- 背景（模拟 tooltip 深色底）
     local bg = frame:CreateTexture(nil, "BACKGROUND")
@@ -89,11 +97,10 @@ local function BuildTooltipPreview(parent, y)
     price:SetText(L("Sell Price") .. ": 12g 34s 56c")
 
     -- 初始缩放
-    local scale = US.GetScale("tooltip")
-    frame:SetScale(scale)
+    frame:SetScale(US.GetScale("tooltip"))
 
     tooltipPreview = frame
-    return frame, 90 + 16
+    return wrapper, previewH + 16
 end
 
 -- 当 tooltip 缩放改变时更新预览

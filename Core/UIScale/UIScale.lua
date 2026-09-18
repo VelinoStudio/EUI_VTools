@@ -20,7 +20,7 @@ local SCALE_STEP = 0.05
 
 -- 窗体注册表：key = 配置键，frameFn = 获取 frame 的函数，lazy = 是否延迟加载
 local frames = {
-    { key = "character",   name = "PaperDollFrame",    lazy = false },
+    { key = "character",   name = "CharacterFrame",    lazy = false },  -- 顶层窗体（PaperDollFrame 是其子帧）
     { key = "friends",     name = "FriendsFrame",      lazy = false },
     { key = "mail",        name = "MailFrame",         lazy = true  },
     { key = "collections", name = "CollectionsJournal",lazy = true  },
