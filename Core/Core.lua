@@ -75,29 +75,6 @@ local function ClearEUIContent()
     end
 end
 
-local function RestoreNativeEUIContent()
-    if EUI and EUI._contentHeader then
-        EUI._contentHeader:Show()
-    end
-    if EUI and EUI._pageCache then
-        local activeMod = (EUI.GetActiveModule and EUI:GetActiveModule()) or nil
-        local activePg  = (EUI.GetActivePage and EUI:GetActivePage()) or nil
-        local activeKey = (activeMod and activePg) and (activeMod .. "::" .. activePg) or nil
-        for key, entry in pairs(EUI._pageCache) do
-            if entry and entry.wrapper then
-                if activeKey and key == activeKey then
-                    entry.wrapper:Show()
-                else
-                    entry.wrapper:Hide()
-                end
-            end
-        end
-    end
-    if EUI and EUI._tabBar then
-        EUI._tabBar:Show()
-    end
-end
-
 local function EnsurePlusWrapper()
     local sc = GetScrollChild()
     if not sc then return nil end
@@ -195,14 +172,6 @@ local function HidePlusContent()
     if plusContentWrapper then plusContentWrapper:Hide() end
     plusWrapperVisible = false
     activePlusPageKey = nil
-end
-
-local function HidePlusForNativeSwitch()
-    if plusContentWrapper then plusContentWrapper:Hide() end
-    plusWrapperVisible = false
-    activePlusPageKey = nil
-    lastPlusPageKey = nil   -- 切到原生模块：让下次打开恢复原生模块而非 Plus
-    RestoreNativeEUIContent()
 end
 
 ----------------------------------------------------------------------
@@ -450,7 +419,6 @@ local function RebuildSidebarLayout()
 end
 
 local sidebarInjected = false
-local plusGroupHeader
 
 local function InjectPlusSidebar()
     if sidebarInjected then return true end
@@ -469,11 +437,9 @@ local function InjectPlusSidebar()
         local folder = PLUS_FOLDER_PREFIX .. def.key
         tinsert(group.members, folder)
         if EUI._addonInfoByFolder then
-            local name = L(def.nameKey)
             EUI._addonInfoByFolder[folder] = {
                 folder = folder,
-                display = name,
-                search_name = L("Velino Toolbox") .. " " .. name,
+                display = L(def.nameKey),
                 alwaysLoaded = true,
             }
         end
@@ -491,9 +457,8 @@ local function InjectPlusSidebar()
     tinsert(EUI.ADDON_GROUPS, group)
 
     -- 创建 header 并登记到 EUI 的分组标题表
-    plusGroupHeader = CreatePlusGroupHeader(scrollChild)
     if EUI._sidebarGroupButtons then
-        EUI._sidebarGroupButtons[GROUP_KEY] = plusGroupHeader
+        EUI._sidebarGroupButtons[GROUP_KEY] = CreatePlusGroupHeader(scrollChild)
     end
 
     -- 创建子项
@@ -623,16 +588,6 @@ local function StartInjectLoop()
     injectTicker = C_Timer.NewTicker(0.5, function()
         if InjectPlusSidebar() then
             HookEUINavigation()
-
-            -- 注册模块名到 EUI._modules（供搜索与显示名本地化）
-            for _, def in ipairs(pageDefs) do
-                local folder = PLUS_FOLDER_PREFIX .. def.key
-                EUI._modules = EUI._modules or {}
-                if not EUI._modules[folder] then
-                    EUI._modules[folder] = { title = L(def.nameKey) }
-                end
-            end
-
             injectTicker:Cancel()
             injectTicker = nil
         end
