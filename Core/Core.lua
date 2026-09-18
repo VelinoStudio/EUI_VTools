@@ -201,6 +201,46 @@ local function HidePlusForNativeSwitch()
 end
 
 ----------------------------------------------------------------------
+--  查找 EUI 的 headerFrame（file-local 变量，不在 EUI 全局上）
+--  通过 _clickArea 子帧遍历 + 特征匹配：有 _title FontString + 位于右侧
+----------------------------------------------------------------------
+local function FindHeaderFrame()
+    if not EUI or not EUI._clickArea then return nil end
+    for _, child in ipairs({ EUI._clickArea:GetChildren() }) do
+        if child._title and child._desc and child.GetChildren then
+            -- 进一步确认 _title 是 FontString
+            local t = child._title
+            if t.GetText and t.SetText then
+                return child
+            end
+        end
+    end
+    return nil
+end
+
+----------------------------------------------------------------------
+--  顶部 header 更新（标题 + 描述）
+--  hooksecurefunc 模式下 EUI 原版 SelectModule 已更新了 header，
+--  但它用的是 EUI._modules[folderName] 的 config（我们的 Plus
+--  文件夹不在 modules 里，config.title 是 nil，标题会变成文件夹名）
+--  所以这里需要覆盖一下标题为正确的翻译名
+----------------------------------------------------------------------
+local function UpdatePlusHeader(pageDef)
+    if not EUI then return end
+    local hf = FindHeaderFrame()
+    if hf and hf._title then
+        hf._title:SetText(L(pageDef.nameKey))
+    end
+    if hf and hf._desc then
+        hf._desc:SetText("")
+    end
+    -- 更新底部 reset 按钮（Plus 页面没有 onReset，隐藏即可）
+    if EUI._UpdateResetButtonVisible then
+        EUI._UpdateResetButtonVisible(false)
+    end
+end
+
+----------------------------------------------------------------------
 --  侧边栏高亮同步
 ----------------------------------------------------------------------
 local function SetPlusButtonActive(pageKey)
@@ -364,7 +404,9 @@ local function CreatePlusChildRow(parent, pageDef, indentX)
     btn._loaded = true
 
     btn:SetScript("OnClick", function()
+        SetPlusButtonActive(pageDef.key)
         ShowPlusPage(pageDef.key)
+        UpdatePlusHeader(pageDef)
     end)
 
     return btn
@@ -467,19 +509,40 @@ end
 local function HookEUINavigation()
     if not EUI then return end
 
-    -- Hook SelectModule：Plus 文件夹走自有导航，非 Plus 项隐藏 Plus 内容
+    -- Hook SelectModule：用 hooksecurefunc 后处理
+    -- 原版 SelectModule 在 modules[folderName] 不存在时会早 return（line 10300），
+    -- 所以 Plus 文件夹不会触发任何原版逻辑（header、highlight、BuildTabs）
+    -- 我们的后处理接管全部 UI 更新
     if EUI.SelectModule and not EUI._vtoolsHookedSelect then
-        local orig = EUI.SelectModule
-        EUI.SelectModule = function(self, folderName)
+        hooksecurefunc(EUI, "SelectModule", function(self, folderName)
             if folderName and folderName:sub(1, #PLUS_FOLDER_PREFIX) == PLUS_FOLDER_PREFIX then
                 local pageKey = folderName:sub(#PLUS_FOLDER_PREFIX + 1)
-                SetPlusButtonActive(pageKey)
+                local pageDef
+                for _, d in ipairs(pageDefs) do
+                    if d.key == pageKey then pageDef = d; break end
+                end
+                -- 原版 SelectModule 早 return 了，header/highlight 都没更新
+                -- 我们接管：清 EUI 原生内容 + 显示 Plus 内容 + 更新高亮 + 更新 header
+                ClearEUIContent()
                 ShowPlusPage(pageKey)
-                return
+                SetPlusButtonActive(pageKey)
+                if pageDef then UpdatePlusHeader(pageDef) end
+            else
+                -- 切到原生模块：原版 SelectModule 已成功执行（更新了 header、
+                -- 原生按钮高亮、BuildTabs），我们只需隐藏 Plus 层 + 熄灭 Plus 按钮高亮
+                if plusContentWrapper then plusContentWrapper:Hide() end
+                plusWrapperVisible = false
+                activePlusPageKey = nil
+                for fld, b in pairs(EUI._sidebarButtons) do
+                    if fld:sub(1, #PLUS_FOLDER_PREFIX) == PLUS_FOLDER_PREFIX then
+                        if b._glow then b._glow:Hide() end
+                        if b._glowTop then b._glowTop:Hide() end
+                        if b._glowBot then b._glowBot:Hide() end
+                        if b._label then b._label:SetAlpha(0.75) end
+                    end
+                end
             end
-            HidePlusForNativeSwitch()
-            return orig(self, folderName)
-        end
+        end)
         EUI._vtoolsHookedSelect = true
     end
 
