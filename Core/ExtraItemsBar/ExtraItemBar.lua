@@ -670,6 +670,9 @@ local function UpdateBar(id)
             bar.buttons[hideButtonID]:Hide()
         end
         bar:Hide()
+        if id == 1 then
+            print(string.format("|cff4accff[EVT]|r Bar1 hidden: no items matched include='%s'", barDB.include))
+        end
         return
     end
 
@@ -1101,11 +1104,21 @@ local function Initialize()
 
     UpdateQuestItemList()
     UpdateEquipmentList()
+    print(string.format("|cff4accff[EVT]|r questItems=%d equipment=%d", #questItemList, #equipmentList))
     UpdateState(EIB.STATE.IN_DELVE)
     UpdateState(EIB.STATE.QUANTUM_ITEM_ALLOWED)
     UpdateBars()
     UpdateBinding()
     RegisterEvents()
+    -- 打印各条最终可见状态
+    for i = 1, 5 do
+        local b = bars[i]
+        if b then
+            local cx, cy = b:GetParent():GetCenter()
+            print(string.format("|cff4accff[EVT]|r Bar%d shown=%s width=%.0f anchor=(%.0f,%.0f)",
+                i, tostring(b:IsShown()), b:GetWidth(), cx or 0, cy or 0))
+        end
+    end
 end
 
 ----------------------------------------------------------------------

@@ -675,36 +675,7 @@ buildBarSection = function(section)
     _, h = W:SectionHeader(section, "Visibility", y)
     y = y - h
 
-    -- 预设下拉（与 EUI 原生动作条一致的可见性选项）
-    local visPresets = {
-        ["show"] = "Always",
-        ["hide"] = "Hide",
-        ["[combat]show;hide"] = "In Combat",
-        ["[combat]hide;show"] = "Out of Combat",
-        ["[petbattle]hide;show"] = "Hide in Pet Battle",
-        ["[stealth]show;hide"] = "In Stealth",
-    }
-    local function GetVisPreset()
-        for macro in pairs(visPresets) do
-            if barDB.visibility == macro then return macro end
-        end
-        return barDB.visibility -- 不匹配则保留原值（高级模式）
-    end
-    row, rowH = W:DualRow(section, y, {
-        type = "dropdown",
-        text = L("Visibility"),
-        values = visPresets,
-        order = { "show", "hide", "[combat]show;hide", "[combat]hide;show",
-                  "[petbattle]hide;show", "[stealth]show;hide" },
-        getValue = GetVisPreset,
-        setValue = function(v)
-            barDB.visibility = v
-            EIB.UpdateBar(currentBar)
-        end,
-    }, nil)
-    y = y - rowH
-
-    -- 高级：自定义可见性条件（与 EUI 原生一致的原始宏条件输入）
+    -- 可见性条件（与 EUI 原生一致的原始宏条件输入）
     row, rowH = MakeInputRow(section, y, "Visibility Macro",
         function() return barDB.visibility end,
         function(text)
