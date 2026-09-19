@@ -438,17 +438,24 @@ end
 local bars = {}
 
 -- anchor 默认位置（无保存位置时使用，自左向右纵向排列在屏幕下方）
-local function ApplyAnchorPosition(id)
-    local anchor = bars[id] and bars[id].anchor
+local function ApplyAnchorPosition(id, anchorFrame)
+    local anchor = anchorFrame or (bars[id] and bars[id].anchor)
     if not anchor then return end
     local db = DB()
     local pos = db and db["bar" .. id] and db["bar" .. id].pos
     anchor:ClearAllPoints()
     if pos and pos.point then
         anchor:SetPoint(pos.point, UIParent, pos.relPoint or pos.point, pos.x or 0, pos.y or 0)
+        if id == 1 then
+            print(string.format("|cff4accff[EVT]|r ApplyAnchorPos(1): saved pos=%s rel=%s x=%.1f y=%.1f",
+                tostring(pos.point), tostring(pos.relPoint), pos.x or 0, pos.y or 0))
+        end
     else
         -- 默认居屏幕中央偏下，便于首次发现
         anchor:SetPoint("CENTER", UIParent, "CENTER", (id - 3) * 130, -180)
+        if id == 1 then
+            print(string.format("|cff4accff[EVT]|r ApplyAnchorPos(1): default CENTER offset (%.0f, -180)", (id - 3) * 130))
+        end
     end
 end
 
@@ -462,7 +469,7 @@ local function CreateBar(id)
     anchor:SetSize(200, 40)
     anchor:SetMovable(true)
     anchor.id = id
-    ApplyAnchorPosition(id)
+    ApplyAnchorPosition(id, anchor)
 
     -- anchor 自身加一层极淡背景：空条时也能在屏幕上看到位置（解锁模式与调试用）
     local anchorBg = UI.SolidTex(anchor, "BACKGROUND", 0, 0, 0, 0.2)
@@ -471,6 +478,7 @@ local function CreateBar(id)
 
     local bar = CreateFrame("Frame", BUTTON_PREFIX .. id, anchor, "SecureHandlerStateTemplate")
     bar.id = id
+    bar.anchor = anchor
     bar:SetPoint(barDB.anchor, anchor, barDB.anchor, 0, 0)
     bar:SetSize(200, 40)
     bar:SetFrameStrata("LOW")
@@ -1175,11 +1183,11 @@ boot:SetScript("OnEvent", function()
         Initialize()
     end
 
-    -- 延迟 2 秒再检查位置：EUI 解锁系统的布局可能在登录后异步覆盖位置
+    -- 延迟 2 秒再检查并强制重设位置：EUI 解锁系统的布局可能在登录后异步覆盖位置
     C_Timer.After(2, function()
         for i = 1, 5 do
             local b = bars[i]
-            if b then
+            if b and b.anchor then
                 local anchor = b.anchor
                 local p, rp, x, y = anchor:GetPoint()
                 local cx, cy = anchor:GetCenter()
@@ -1187,6 +1195,9 @@ boot:SetScript("OnEvent", function()
                     i, tostring(p), tostring(rp), x or 0, y or 0, cx or -1, cy or -1, tostring(b:IsShown())))
             end
         end
+        -- 强制重设所有条的 anchor 位置
+        for i = 1, 5 do ApplyAnchorPosition(i) end
+        print("|cff4accff[EVT]|r Re-applied all anchor positions")
     end)
 end)
 
