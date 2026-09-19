@@ -671,11 +671,39 @@ buildBarSection = function(section)
     })
     y = y - rowH - 4
 
-    -- 可见性
+    -- 可见性（EUI 原生风格：下拉预设 + 高级宏条件输入）
     _, h = W:SectionHeader(section, "Visibility", y)
     y = y - h
 
-    -- 可见性条件（与 EUI 原生一致的原始宏条件输入）
+    -- EUI 风格可见性模式下拉：内部存宏条件，显示用 EUI 风格标签
+    local visModes = {
+        ["show"]                     = L("Always"),
+        ["hide"]                     = L("Hide"),
+        ["[combat]show;hide"]        = L("In Combat"),
+        ["[combat]hide;show"]        = L("Out of Combat"),
+        ["[petbattle]hide;show"]     = L("Hide in Pet Battle"),
+    }
+    local visOrder = { "show", "hide", "[combat]show;hide", "[combat]hide;show", "[petbattle]hide;show" }
+
+    local function GetVisMode()
+        local v = barDB.visibility
+        return visModes[v] and v or v  -- 预设则返回 key，否则原样（高级模式）
+    end
+
+    row, rowH = W:DualRow(section, y, {
+        type = "dropdown",
+        text = L("Visibility"),
+        values = visModes,
+        order = visOrder,
+        getValue = GetVisMode,
+        setValue = function(v)
+            barDB.visibility = v
+            EIB.UpdateBar(currentBar)
+        end,
+    }, nil)
+    y = y - rowH
+
+    -- 高级：自定义可见性条件
     row, rowH = MakeInputRow(section, y, "Visibility Macro",
         function() return barDB.visibility end,
         function(text)

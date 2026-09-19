@@ -61,7 +61,7 @@ local defaults = {
             },
             bar1 = {
                 enable          = true,
-                include         = "QUEST,BANNER,EQUIP,PROFMN,HOLIDAY,OPENABLE,DELVE",
+                include         = "QUEST,POTION,FOOD,EQUIP,BANNER,PROFMN,HOLIDAY,OPENABLE,DELVE",
                 visibility      = "[petbattle]hide;show",
                 numButtons      = 12,
                 buttonsPerRow   = 12,

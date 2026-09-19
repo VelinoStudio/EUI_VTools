@@ -67,7 +67,7 @@ local BUTTON_PREFIX = "EVT_ExtraItemsBar"
 local function DefaultBar(id)
     return {
         enable = (id == 1),
-        include = "QUEST,BANNER,EQUIP,PROFMN,HOLIDAY,OPENABLE,DELVE",
+        include = "QUEST,POTION,FOOD,EQUIP,BANNER,PROFMN,HOLIDAY,OPENABLE,DELVE",
         visibility = "[petbattle]hide;show",
         numButtons = 12, buttonsPerRow = 12,
         buttonWidth = 35, buttonHeight = 30,
@@ -660,7 +660,7 @@ local function UpdateBar(id)
     bar:ClearAllPoints()
     bar:SetPoint(barDB.anchor, bar:GetParent(), barDB.anchor, 0, 0)
 
-    -- 无内容：注销可见性驱动并隐藏
+    -- 无内容：注销可见性驱动，但保留背景可见（便于发现与定位）
     if buttonID == 1 and not EIB._bindingActive then
         if bar.register then
             UnregisterStateDriver(bar, "visibility")
@@ -669,9 +669,15 @@ local function UpdateBar(id)
         for hideButtonID = 1, MAX_BUTTONS do
             bar.buttons[hideButtonID]:Hide()
         end
-        bar:Hide()
+        -- 空条仍显示背景（如 backdrop 开启），让用户能看到条的位置
+        if bar.barBg then
+            if barDB.backdrop then bar.barBg:Show() else bar.barBg:Hide() end
+        end
+        UpdateBarBorder(bar, barDB)
+        bar:SetAlpha(barDB.mouseOver and (barDB.alphaMin or 0) or (barDB.alphaMax or 1))
+        bar:Show()
         if id == 1 then
-            print(string.format("|cff4accff[EVT]|r Bar1 hidden: no items matched include='%s'", barDB.include))
+            print(string.format("|cff4accff[EVT]|r Bar1 empty (no matched items), backdrop shown for positioning"))
         end
         return
     end
