@@ -1174,6 +1174,20 @@ boot:SetScript("OnEvent", function()
     if db and db.enable then
         Initialize()
     end
+
+    -- 延迟 2 秒再检查位置：EUI 解锁系统的布局可能在登录后异步覆盖位置
+    C_Timer.After(2, function()
+        for i = 1, 5 do
+            local b = bars[i]
+            if b then
+                local anchor = b.anchor
+                local p, rp, x, y = anchor:GetPoint()
+                local cx, cy = anchor:GetCenter()
+                print(string.format("|cff4accff[EVT]|r Bar%d delayed: point=%s rel=%s x=%.1f y=%.1f center=(%.0f,%.0f) shown=%s",
+                    i, tostring(p), tostring(rp), x or 0, y or 0, cx or -1, cy or -1, tostring(b:IsShown())))
+            end
+        end
+    end)
 end)
 
 -- 设置页开关 enable 时惰性初始化内容
