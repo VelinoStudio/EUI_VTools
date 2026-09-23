@@ -1,0 +1,15 @@
+# WoW addon cache / build artifacts
+*.toc.disabled
+*.bak
+*.tmp
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+.DS_Store
