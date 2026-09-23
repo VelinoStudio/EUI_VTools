@@ -3,5 +3,9 @@
   <Script file="UIScale\UIScale.lua"/>
   <Script file="Pages\General.lua"/>
   <Script file="Pages\UIScale.lua"/>
+  <!-- 额外物品条：先建命名空间，再挂数据（Data 依赖 ExtraItemBar 中的模块表） -->
+  <Script file="ExtraItemsBar\ExtraItemBar.lua"/>
+  <Script file="ExtraItemsBar\Data.lua"/>
+  <Script file="Pages\ExtraItemsBar.lua"/>
   <Script file="Core.lua"/>
 </Ui>
