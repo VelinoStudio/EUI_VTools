@@ -31,7 +31,30 @@ evt.Pages = {}
 -- 插件图标（media/evt_logo.tga，供设置面板与欢迎页使用）
 evt.UI.ICON = "Interface\\AddOns\\EUI_VTools\\media\\evt_logo.tga"
 
--- 账号级数据库：跨角色共享设置
+----------------------------------------------------------------------
+--  配置数据库（接入 EUI 中央 EllesmereUIDB，随 profile 导出/导入）
+--  数据存于 EllesmereUIDB.profiles[name].addons["EUI_VTools"]
+----------------------------------------------------------------------
+local defaults = {
+    profile = {
+        -- 界面缩放配置集
+        uiScale = {
+            character   = { scale = 1, locked = true },
+            friends     = { scale = 1, locked = true },
+            mail        = { scale = 1, locked = true },
+            collections = { scale = 1, locked = true },
+            merchant    = { scale = 1, locked = true },
+            tooltip     = { scale = 1 },                  -- tooltip 无锁定开关
+            professions = { scale = 1, locked = true },
+            map         = { scale = 1, locked = true },   -- 地图 + 任务日志（WorldMapFrame）
+        },
+    },
+}
+
+-- 用 EUI 的 NewDB 创建数据库，数据天然进入 EllesmereUIDB 的 addons 子表
+evt.db = (evt.Lite and evt.Lite.NewDB) and evt.Lite.NewDB("EUI_VToolsDB", defaults) or { profile = defaults.profile }
+
+-- 账号级数据库：跨角色共享设置（独立于 EUI profile，用于非 profile 数据）
 EUI_VToolsAccountDB = EUI_VToolsAccountDB or {}
 
 -- 单次登录提示：同一条消息整个账号生命周期只显示一次

@@ -22,12 +22,14 @@ local PLUS_FOLDER_PREFIX = "EUI_VTools_"
 ----------------------------------------------------------------------
 local pageDefs = {}
 
-local function RegisterPage(key, name, build, module)
-    tinsert(pageDefs, { key = key, name = name, build = build, module = module })
+local function RegisterPage(key, nameKey, descKey, build, module)
+    -- 保存英文 key，UI 渲染时才调用 L() 翻译（避免 file-scope 时 activeCatalog 未就绪）
+    tinsert(pageDefs, { key = key, nameKey = nameKey, descKey = descKey, build = build, module = module })
 end
 
 -- 框架阶段只注册一个占位页，后续功能逐步添加时在此处新增 RegisterPage 调用
-RegisterPage("general", L["General"], evt.Pages.BuildGeneralPage, nil)
+RegisterPage("general", "General", "General_Desc", evt.Pages.BuildGeneralPage, nil)
+RegisterPage("ui", "UI", "UI_Desc", evt.Pages.BuildUIScalePage, nil)
 
 ----------------------------------------------------------------------
 --  内容区接管
@@ -35,6 +37,9 @@ RegisterPage("general", L["General"], evt.Pages.BuildGeneralPage, nil)
 -- Plus 内容包裹帧（由 EnsurePlusWrapper 创建并赋值）
 local plusContentWrapper
 local activePlusPageKey
+-- lastPlusPageKey：跨 close/reopen 保持最后选中的 Plus 页面
+-- （与 activePlusPageKey 不同，后者是运行时状态，Hide 时会清）
+local lastPlusPageKey
 -- Plus 内容可见状态
 local plusWrapperVisible = false
 
@@ -67,29 +72,6 @@ local function ClearEUIContent()
     end
     if EUI and EUI.ClearContentHeader then
         pcall(EUI.ClearContentHeader, EUI)
-    end
-end
-
-local function RestoreNativeEUIContent()
-    if EUI and EUI._contentHeader then
-        EUI._contentHeader:Show()
-    end
-    if EUI and EUI._pageCache then
-        local activeMod = (EUI.GetActiveModule and EUI:GetActiveModule()) or nil
-        local activePg  = (EUI.GetActivePage and EUI:GetActivePage()) or nil
-        local activeKey = (activeMod and activePg) and (activeMod .. "::" .. activePg) or nil
-        for key, entry in pairs(EUI._pageCache) do
-            if entry and entry.wrapper then
-                if activeKey and key == activeKey then
-                    entry.wrapper:Show()
-                else
-                    entry.wrapper:Hide()
-                end
-            end
-        end
-    end
-    if EUI and EUI._tabBar then
-        EUI._tabBar:Show()
     end
 end
 
@@ -141,6 +123,12 @@ local function ShowPlusPage(pageKey)
     wrapper:Show()
     plusWrapperVisible = true
     activePlusPageKey = pageKey
+    lastPlusPageKey = pageKey   -- 持久化：关闭重开后仍能恢复
+
+    -- 先隐藏所有已缓存的 Plus 页（防止内容叠加）
+    for k, pg in pairs(wrapper._pages) do
+        if k ~= pageKey then pg:Hide() end
+    end
 
     -- 构建或显示目标页
     local page = wrapper._pages[pageKey]
@@ -186,11 +174,44 @@ local function HidePlusContent()
     activePlusPageKey = nil
 end
 
-local function HidePlusForNativeSwitch()
-    if plusContentWrapper then plusContentWrapper:Hide() end
-    plusWrapperVisible = false
-    activePlusPageKey = nil
-    RestoreNativeEUIContent()
+----------------------------------------------------------------------
+--  查找 EUI 的 headerFrame（file-local 变量，不在 EUI 全局上）
+--  通过 _clickArea 子帧遍历 + 特征匹配：有 _title FontString + 位于右侧
+----------------------------------------------------------------------
+local function FindHeaderFrame()
+    if not EUI or not EUI._clickArea then return nil end
+    for _, child in ipairs({ EUI._clickArea:GetChildren() }) do
+        if child._title and child._desc and child.GetChildren then
+            -- 进一步确认 _title 是 FontString
+            local t = child._title
+            if t.GetText and t.SetText then
+                return child
+            end
+        end
+    end
+    return nil
+end
+
+----------------------------------------------------------------------
+--  顶部 header 更新（标题 + 描述）
+--  hooksecurefunc 模式下 EUI 原版 SelectModule 已更新了 header，
+--  但它用的是 EUI._modules[folderName] 的 config（我们的 Plus
+--  文件夹不在 modules 里，config.title 是 nil，标题会变成文件夹名）
+--  所以这里需要覆盖一下标题为正确的翻译名
+----------------------------------------------------------------------
+local function UpdatePlusHeader(pageDef)
+    if not EUI then return end
+    local hf = FindHeaderFrame()
+    if hf and hf._title then
+        hf._title:SetText(L(pageDef.nameKey))
+    end
+    if hf and hf._desc then
+        hf._desc:SetText(pageDef.descKey and L(pageDef.descKey) or "")
+    end
+    -- 更新底部 reset 按钮（Plus 页面没有 onReset，隐藏即可）
+    if EUI._UpdateResetButtonVisible then
+        EUI._UpdateResetButtonVisible(false)
+    end
 end
 
 ----------------------------------------------------------------------
@@ -202,19 +223,30 @@ local function SetPlusButtonActive(pageKey)
         local isPlus = folder and folder:sub(1, #PLUS_FOLDER_PREFIX) == PLUS_FOLDER_PREFIX
         if isPlus then
             local isTarget = folder == PLUS_FOLDER_PREFIX .. pageKey
+            -- 选中态：indicator / glow / glowTop / glowBot 全部同步
             if btn._indicator then
                 if isTarget then btn._indicator:Show() else btn._indicator:Hide() end
             end
             if btn._glow then
                 if isTarget then btn._glow:Show() else btn._glow:Hide() end
             end
+            if btn._glowTop then
+                if isTarget then btn._glowTop:Show() else btn._glowTop:Hide() end
+            end
+            if btn._glowBot then
+                if isTarget then btn._glowBot:Show() else btn._glowBot:Hide() end
+            end
             if btn._label then
                 btn._label:SetAlpha(isTarget and 1 or 0.75)
             end
         else
+            -- 关键：选 Plus 页面时必须熄灭所有 EUI 原生按钮的高亮
+            -- 因为我们 hook SelectModule 后 return 了，EUI 自己的
+            -- UpdateSidebarHighlight(folderName) 不会被调用
             if btn._indicator then btn._indicator:Hide() end
             if btn._glow then btn._glow:Hide() end
-            if btn._label then btn._label:SetAlpha(0.75) end
+            if btn._glowTop then btn._glowTop:Hide() end
+            if btn._glowBot then btn._glowBot:Hide() end
         end
     end
 end
@@ -241,7 +273,7 @@ local function CreatePlusGroupHeader(parent)
 
     local label = UI.MakeFont(row, 15, r, g, b, 1)
     label:SetPoint("LEFT", row, "LEFT", (EUI.NAV_LEFT or 20), 0)
-    label:SetText(L["Velino Toolbox"])
+    label:SetText(L("Velino Toolbox"))
 
     row._isGroup = true
     row._groupKey = GROUP_KEY
@@ -252,27 +284,49 @@ end
 local function DecorateChildRow(btn)
     local EG = (EUI and EUI.ELLESMERE_GREEN) or { r = UI.ACCENT_R, g = UI.ACCENT_G, b = UI.ACCENT_B }
 
-    -- 选中态左侧竖条
-    local indicator = UI.SolidTex(btn, "ARTWORK", EG.r, EG.g, EG.b, 1)
+    -- 选中态左侧竖条（与 EUI 一致：BORDER 层）
+    local indicator = btn:CreateTexture(nil, "BORDER")
+    indicator:SetColorTexture(EG.r, EG.g, EG.b, 1)
     indicator:SetWidth(3)
     indicator:SetPoint("TOPLEFT", btn, "TOPLEFT", -1, 0)
     indicator:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", -1, 0)
     indicator:Hide()
     btn._indicator = indicator
 
-    -- 选中态整行辉光
-    local glow = UI.SolidTex(btn, "ARTWORK", EG.r, EG.g, EG.b, 0.12)
-    glow:SetAllPoints()
+    -- 选中态整行辉光（水平渐变，与 EUI MakeNavGradient 一致）
+    local glow = btn:CreateTexture(nil, "BACKGROUND")
+    glow:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
+    glow:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
+    glow:SetColorTexture(EG.r, EG.g, EG.b, 1)
+    glow:SetGradient("HORIZONTAL", CreateColor(EG.r, EG.g, EG.b, 0.15), CreateColor(EG.r, EG.g, EG.b, 0))
     glow:Hide()
     btn._glow = glow
 
+    -- 选中态顶/底边缘线（与 EUI MakeNavEdgeLine 一致：1px 灰白渐变）
+    local function makeEdge(edge)
+        local g = btn:CreateTexture(nil, "BORDER")
+        g:SetHeight(1)
+        g:SetPoint(edge .. "LEFT", btn, edge .. "LEFT", 0, 0)
+        g:SetPoint(edge .. "RIGHT", btn, edge .. "RIGHT", 0, 0)
+        g:SetColorTexture(0.7, 0.7, 0.7, 1)
+        g:SetGradient("HORIZONTAL", CreateColor(0.7, 0.7, 0.7, 0.5), CreateColor(0.7, 0.7, 0.7, 0))
+        g:Hide()
+        return g
+    end
+    btn._glowTop = makeEdge("TOP")
+    btn._glowBot = makeEdge("BOTTOM")
+
     -- hover 辉光
     local hR, hG, hB = 0.85, 0.95, 0.90
-    btn._hoverGlow = UI.SolidTex(btn, "ARTWORK", hR, hG, hB, 0.03)
-    btn._hoverGlow:SetAllPoints()
+    btn._hoverGlow = btn:CreateTexture(nil, "BACKGROUND")
+    btn._hoverGlow:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
+    btn._hoverGlow:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
+    btn._hoverGlow:SetColorTexture(hR, hG, hB, 1)
+    btn._hoverGlow:SetGradient("HORIZONTAL", CreateColor(hR, hG, hB, 0.03), CreateColor(hR, hG, hB, 0))
     btn._hoverGlow:Hide()
 
-    local hoverInd = UI.SolidTex(btn, "ARTWORK", hR, hG, hB, 0.25)
+    local hoverInd = btn:CreateTexture(nil, "BORDER")
+    hoverInd:SetColorTexture(hR, hG, hB, 0.25)
     hoverInd:SetWidth(3)
     hoverInd:SetPoint("TOPLEFT", btn, "TOPLEFT", -1, 0)
     hoverInd:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", -1, 0)
@@ -287,7 +341,8 @@ local function DecorateChildRow(btn)
     btn._dlIcon = dlIcon
 
     -- 整体 hover 高亮蒙版
-    local hover = UI.SolidTex(btn, "HIGHLIGHT", 1, 1, 1, 0)
+    local hover = btn:CreateTexture(nil, "HIGHLIGHT")
+    hover:SetColorTexture(1, 1, 1, 0)
     hover:SetAllPoints()
 
     btn:SetScript("OnEnter", function(self)
@@ -316,14 +371,16 @@ local function CreatePlusChildRow(parent, pageDef, indentX)
 
     local label = UI.MakeFont(btn, 14, 1, 1, 1, 0.75)
     label:SetPoint("LEFT", btn, "LEFT", indentX, 0)
-    label:SetText(pageDef.name)
+    label:SetText(L(pageDef.nameKey))
     btn._label = label
     btn._pageKey = pageDef.key
     btn._folder = PLUS_FOLDER_PREFIX .. pageDef.key
     btn._loaded = true
 
     btn:SetScript("OnClick", function()
+        SetPlusButtonActive(pageDef.key)
         ShowPlusPage(pageDef.key)
+        UpdatePlusHeader(pageDef)
     end)
 
     return btn
@@ -362,7 +419,6 @@ local function RebuildSidebarLayout()
 end
 
 local sidebarInjected = false
-local plusGroupHeader
 
 local function InjectPlusSidebar()
     if sidebarInjected then return true end
@@ -376,15 +432,14 @@ local function InjectPlusSidebar()
     local indentX = (EUI.NAV_LEFT or 18) + 16
 
     -- 注册 Plus 分组到 ADDON_GROUPS
-    local group = { key = GROUP_KEY, label = L["Velino Toolbox"], members = {} }
+    local group = { key = GROUP_KEY, label = L("Velino Toolbox"), members = {} }
     for _, def in ipairs(pageDefs) do
         local folder = PLUS_FOLDER_PREFIX .. def.key
         tinsert(group.members, folder)
         if EUI._addonInfoByFolder then
             EUI._addonInfoByFolder[folder] = {
                 folder = folder,
-                display = def.name,
-                search_name = L["Velino Toolbox"] .. " " .. def.name,
+                display = L(def.nameKey),
                 alwaysLoaded = true,
             }
         end
@@ -402,9 +457,8 @@ local function InjectPlusSidebar()
     tinsert(EUI.ADDON_GROUPS, group)
 
     -- 创建 header 并登记到 EUI 的分组标题表
-    plusGroupHeader = CreatePlusGroupHeader(scrollChild)
     if EUI._sidebarGroupButtons then
-        EUI._sidebarGroupButtons[GROUP_KEY] = plusGroupHeader
+        EUI._sidebarGroupButtons[GROUP_KEY] = CreatePlusGroupHeader(scrollChild)
     end
 
     -- 创建子项
@@ -425,19 +479,40 @@ end
 local function HookEUINavigation()
     if not EUI then return end
 
-    -- Hook SelectModule：Plus 文件夹走自有导航，非 Plus 项隐藏 Plus 内容
+    -- Hook SelectModule：用 hooksecurefunc 后处理
+    -- 原版 SelectModule 在 modules[folderName] 不存在时会早 return（line 10300），
+    -- 所以 Plus 文件夹不会触发任何原版逻辑（header、highlight、BuildTabs）
+    -- 我们的后处理接管全部 UI 更新
     if EUI.SelectModule and not EUI._vtoolsHookedSelect then
-        local orig = EUI.SelectModule
-        EUI.SelectModule = function(self, folderName)
+        hooksecurefunc(EUI, "SelectModule", function(self, folderName)
             if folderName and folderName:sub(1, #PLUS_FOLDER_PREFIX) == PLUS_FOLDER_PREFIX then
                 local pageKey = folderName:sub(#PLUS_FOLDER_PREFIX + 1)
-                SetPlusButtonActive(pageKey)
+                local pageDef
+                for _, d in ipairs(pageDefs) do
+                    if d.key == pageKey then pageDef = d; break end
+                end
+                -- 原版 SelectModule 早 return 了，header/highlight 都没更新
+                -- 我们接管：清 EUI 原生内容 + 显示 Plus 内容 + 更新高亮 + 更新 header
+                ClearEUIContent()
                 ShowPlusPage(pageKey)
-                return
+                SetPlusButtonActive(pageKey)
+                if pageDef then UpdatePlusHeader(pageDef) end
+            else
+                -- 切到原生模块：原版 SelectModule 已成功执行（更新了 header、
+                -- 原生按钮高亮、BuildTabs），我们只需隐藏 Plus 层 + 熄灭 Plus 按钮高亮
+                if plusContentWrapper then plusContentWrapper:Hide() end
+                plusWrapperVisible = false
+                activePlusPageKey = nil
+                for fld, b in pairs(EUI._sidebarButtons) do
+                    if fld:sub(1, #PLUS_FOLDER_PREFIX) == PLUS_FOLDER_PREFIX then
+                        if b._glow then b._glow:Hide() end
+                        if b._glowTop then b._glowTop:Hide() end
+                        if b._glowBot then b._glowBot:Hide() end
+                        if b._label then b._label:SetAlpha(0.75) end
+                    end
+                end
             end
-            HidePlusForNativeSwitch()
-            return orig(self, folderName)
-        end
+        end)
         EUI._vtoolsHookedSelect = true
     end
 
@@ -453,21 +528,35 @@ local function HookEUINavigation()
         EUI._vtoolsHookedPage = true
     end
 
-    -- 监听主窗口显示/隐藏
-    if EUI._mainFrame and not EUI._mainFrame._vtoolsOnShow then
-        EUI._mainFrame:HookScript("OnShow", function()
-            C_Timer.After(0, function()
-                if not (EUI._mainFrame and EUI._mainFrame:IsShown()) then return end
-                if activePlusPageKey then
-                    ShowPlusPage(activePlusPageKey)
-                    SetPlusButtonActive(activePlusPageKey)
-                end
-            end)
+    -- 监听主窗口 Show/Toggle（EUI:Show() 和 EUI:Toggle()）
+    -- 关键：不用 mainFrame:HookScript("OnShow")，因为 _mainFrame 在注入时
+    -- 可能还不存在（懒创建），hook 永远不注册。EUI:Show()/Toggle() 是
+    -- table 方法，注入时一定存在。
+    local function _onPanelShown()
+        C_Timer.After(0, function()
+            if not EUI:IsShown() then return end
+            -- 优先用持久化的 lastPlusPageKey（跨 close/reopen）
+            -- HidePlusContent 清 activePlusPageKey 但保留 lastPlusPageKey
+            local restoreKey = lastPlusPageKey
+            if not restoreKey then return end
+            -- 如果当前 activeModule 已经是这个 Plus 页面，不用再恢复
+            local curMod = (EUI.GetActiveModule and EUI:GetActiveModule()) or nil
+            if curMod == PLUS_FOLDER_PREFIX .. restoreKey then return end
+            -- 用 EUI:SelectModule 触发完整流程（header/highlight/BuildTabs）
+            EUI:SelectModule(PLUS_FOLDER_PREFIX .. restoreKey)
         end)
-        EUI._mainFrame:HookScript("OnHide", function()
-            HidePlusContent()
+    end
+
+    if EUI.Show and not EUI._vtoolsHookedShow then
+        hooksecurefunc(EUI, "Show", _onPanelShown)
+        EUI._vtoolsHookedShow = true
+    end
+    if EUI.Toggle and not EUI._vtoolsHookedToggle then
+        hooksecurefunc(EUI, "Toggle", function()
+            -- Toggle 可能 Hide 或 Show，只在 Show 时恢复
+            if EUI:IsShown() then _onPanelShown() end
         end)
-        EUI._mainFrame._vtoolsOnShow = true
+        EUI._vtoolsHookedToggle = true
     end
 
     -- Hook RefreshPage：覆盖绕过 SelectModule/SelectPage 的原生页面重建路径
@@ -499,16 +588,6 @@ local function StartInjectLoop()
     injectTicker = C_Timer.NewTicker(0.5, function()
         if InjectPlusSidebar() then
             HookEUINavigation()
-
-            -- 注册模块名到 EUI._modules（供搜索与显示名本地化）
-            for _, def in ipairs(pageDefs) do
-                local folder = PLUS_FOLDER_PREFIX .. def.key
-                EUI._modules = EUI._modules or {}
-                if not EUI._modules[folder] then
-                    EUI._modules[folder] = { title = def.name }
-                end
-            end
-
             injectTicker:Cancel()
             injectTicker = nil
         end
